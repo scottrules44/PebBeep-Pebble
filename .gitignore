@@ -1,0 +1,19 @@
+# Build output
+build/
+.pebble-sdk/
+
+# Node
+node_modules/
+
+# Local config — contains Firebase API key and per-deployment URLs.
+# Copy config.example.js to config.js and fill in your own values.
+src/pkjs/config.js
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp

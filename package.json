@@ -1,0 +1,59 @@
+{
+  "name": "pebbeep",
+  "version": "1.0.0",
+  "author": "PebBeep",
+  "keywords": ["pebble-app"],
+  "dependencies": {
+    "tweetnacl": "^1.0.3"
+  },
+  "pebble": {
+    "displayName": "PebBeep",
+    "uuid": "1f55873f-77f4-448b-8ae5-e06d919d42d8",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": ["aplite", "basalt", "chalk", "diorite"],
+    "watchapp": {
+      "watchface": false
+    },
+    "capabilities": ["configurable"],
+    "messageKeys": [
+      "KEY_COMMAND",
+      "KEY_CHAT_ID",
+      "KEY_CHAT_NAME",
+      "KEY_CHAT_PREVIEW",
+      "KEY_MSG_TEXT",
+      "KEY_MSG_SENDER",
+      "KEY_MSG_TIME",
+      "KEY_REPLY_TEXT",
+      "KEY_STATUS",
+      "KEY_INDEX",
+      "KEY_TOTAL",
+      "CustomReply1",
+      "CustomReply2",
+      "CustomReply3",
+      "CustomReply4",
+      "VibrateOnMessage",
+      "ShowNotificationPopup",
+      "PollInterval",
+      "KEY_SERVICE"
+    ],
+    "resources": {
+      "media": [
+        {"type": "png", "name": "ICON_IMESSAGE", "file": "images/icon_imessage.png"},
+        {"type": "png", "name": "ICON_SLACK", "file": "images/icon_slack.png"},
+        {"type": "png", "name": "ICON_SIGNAL", "file": "images/icon_signal.png"},
+        {"type": "png", "name": "ICON_WHATSAPP", "file": "images/icon_whatsapp.png"},
+        {"type": "png", "name": "ICON_TELEGRAM", "file": "images/icon_telegram.png"},
+        {"type": "png", "name": "ICON_INSTAGRAM", "file": "images/icon_instagram.png"},
+        {"type": "png", "name": "ICON_MESSENGER", "file": "images/icon_messenger.png"},
+        {"type": "png", "name": "ICON_DISCORD", "file": "images/icon_discord.png"},
+        {"type": "png", "name": "ICON_TWITTER", "file": "images/icon_twitter.png"},
+        {"type": "png", "name": "ICON_LINKEDIN", "file": "images/icon_linkedin.png"},
+        {"type": "png", "name": "ICON_GOOGLECHAT", "file": "images/icon_googlechat.png"},
+        {"type": "png", "name": "ICON_GMESSAGES", "file": "images/icon_gmessages.png"},
+        {"type": "png", "name": "ICON_MATRIX", "file": "images/icon_matrix.png"},
+        {"type": "png", "name": "ICON_CHAT", "file": "images/icon_chat.png"}
+      ]
+    }
+  }
+}

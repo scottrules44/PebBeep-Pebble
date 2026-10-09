@@ -1,4 +1,5 @@
 #include "reply_menu.h"
+#include "touch_ui.h"
 
 // Forward declaration
 extern void send_reply(const char *chat_id, const char *text);
@@ -7,6 +8,7 @@ static Window *s_window;
 static MenuLayer *s_menu_layer;
 static char s_chat_id[64];
 static char s_chat_name[24];
+static bool s_touch = false;   // touch available: taller, finger-sized rows
 
 // Voice dictation
 #ifdef PBL_MICROPHONE
@@ -69,9 +71,11 @@ static const char *get_reply_text(int row) {
 static void dictation_callback(DictationSession *session, DictationSessionStatus status,
                                 char *transcription, void *context) {
   if (status == DictationSessionStatusSuccess && transcription) {
+    // Pop first so the conversation underneath is the top window again;
+    // send_reply() only adds the message to a conversation that is visible.
+    window_stack_pop(true);
     send_reply(s_chat_id, transcription);
     vibes_short_pulse();
-    window_stack_pop(true);
   }
 }
 
@@ -120,22 +124,25 @@ static int16_t menu_get_cell_height(MenuLayer *menu_layer, MenuIndex *cell_index
 #ifdef PBL_ROUND
   if (menu_layer_is_index_selected(menu_layer, cell_index)) {
 #ifdef PBL_MICROPHONE
-    if (cell_index->row == 0) return 52;
+    if (cell_index->row == 0) return s_touch ? 56 : 52;
 #endif
-    return 48;
+    return s_touch ? 52 : 48;
   }
-  return 36;
+  return s_touch ? 44 : 36;
 #else
+  // Finger-sized rows on touch watches
 #ifdef PBL_MICROPHONE
-  if (cell_index->row == 0) return 44;
+  if (cell_index->row == 0) return s_touch ? 52 : 44;
 #endif
-  return 36;
+  return s_touch ? 48 : 36;
 #endif
 }
 
 static void menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cell_index, void *data) {
   GRect bounds = layer_get_bounds(cell_layer);
   bool is_selected = menu_layer_is_index_selected(s_menu_layer, cell_index);
+  (void)is_selected;  // only used by some platform layouts
+  const int16_t text_y = (bounds.size.h - 30) / 2;  // centre a 30px text box
 
 #ifdef PBL_MICROPHONE
   if (cell_index->row == 0) {
@@ -149,7 +156,7 @@ static void menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cel
 #endif
     graphics_draw_text(ctx, "Voice Reply",
       fonts_get_system_font(is_selected ? FONT_KEY_GOTHIC_24_BOLD : FONT_KEY_GOTHIC_18_BOLD),
-      GRect(0, is_selected ? 8 : 6, bounds.size.w, 30),
+      GRect(0, text_y + (is_selected ? 2 : 0), bounds.size.w, 30),
       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
     return;
   }
@@ -170,7 +177,7 @@ static void menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cel
 #endif
   graphics_draw_text(ctx, text,
     fonts_get_system_font(is_selected ? FONT_KEY_GOTHIC_24_BOLD : FONT_KEY_GOTHIC_18),
-    GRect(20, is_selected ? 8 : 6, bounds.size.w - 40, 30),
+    GRect(20, text_y + (is_selected ? 2 : 0), bounds.size.w - 40, 30),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
 #else
@@ -184,7 +191,7 @@ static void menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cel
 #endif
   graphics_draw_text(ctx, text,
     fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
-    GRect(10, 2, bounds.size.w - 20, 30),
+    GRect(10, text_y, bounds.size.w - 20, 30),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 #endif
 }
@@ -194,9 +201,11 @@ static void menu_select_click(MenuLayer *menu_layer, MenuIndex *cell_index, void
   if (cell_index->row == 0) { start_voice_reply(); return; }
 #endif
   const char *text = get_reply_text(cell_index->row);
+  // Pop first so the conversation underneath is the top window again;
+  // send_reply() only adds the message to a conversation that is visible.
+  window_stack_pop(true);
   send_reply(s_chat_id, text);
   vibes_short_pulse();
-  window_stack_pop(true);
 }
 
 static void window_load(Window *window) {
@@ -207,6 +216,7 @@ static void window_load(Window *window) {
   window_set_background_color(window, GColorBlack);
 #endif
 
+  s_touch = touch_ui_available();
   s_menu_layer = menu_layer_create(bounds);
 
 #ifdef PBL_ROUND

@@ -11,7 +11,7 @@
     "uuid": "1f55873f-77f4-448b-8ae5-e06d919d42d8",
     "sdkVersion": "3",
     "enableMultiJS": true,
-    "targetPlatforms": ["aplite", "basalt", "chalk", "diorite"],
+    "targetPlatforms": ["aplite", "basalt", "chalk", "diorite", "emery", "flint", "gabbro"],
     "watchapp": {
       "watchface": false
     },

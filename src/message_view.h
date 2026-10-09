@@ -4,7 +4,7 @@
 #ifdef PBL_PLATFORM_APLITE
   #define MAX_MESSAGES 3
 #else
-  #define MAX_MESSAGES 5
+  #define MAX_MESSAGES 8
 #endif
 
 #define MSG_SENDER_LEN 20

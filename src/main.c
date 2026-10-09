@@ -352,6 +352,16 @@ static void init(void) {
 
   APP_LOG(APP_LOG_LEVEL_INFO, "AppMessage opened (inbox=%d, outbox=%d)", INBOX_SIZE, OUTBOX_SIZE);
 
+#if defined(PBL_TOUCH)
+  // Opt in to the system touch bridge: MenuLayers (chat list, reply menu)
+  // scroll and activate by touch, and swipe-right pops a window like BACK.
+  // Windows that draw their own touch controls opt out individually with
+  // window_set_touch_bridge_disabled().
+  app_touch_navigation_enable(true);
+  APP_LOG(APP_LOG_LEVEL_INFO, "Touch navigation enabled (touch %s)",
+    touch_service_is_enabled() ? "available" : "off or unsupported");
+#endif
+
   // Route: timeline pin or configured → chat list, otherwise welcome
   if (launched_by_timeline || persist_exists(PERSIST_VIBRATE)) {
     APP_LOG(APP_LOG_LEVEL_INFO, "Going to chat list");

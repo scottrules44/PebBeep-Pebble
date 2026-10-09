@@ -477,7 +477,8 @@ function fetchMessagesForChat(chatId) {
 
     chatMessages.sort(function(a, b) { return a.timestamp - b.timestamp; });
 
-    var start = Math.max(0, chatMessages.length - 5);
+    // The watch keeps up to 8 messages per chat (3 on the original Pebble)
+    var start = Math.max(0, chatMessages.length - 8);
     console.log('PebBeep: Sending ' + (chatMessages.length - start) + '/' + chatMessages.length + ' messages to watch for ' + chatId);
 
     for (var j = start; j < chatMessages.length; j++) {

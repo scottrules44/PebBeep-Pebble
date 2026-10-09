@@ -1,6 +1,7 @@
 #include "chat_list.h"
 #include "message_view.h"
 #include "reply_menu.h"
+#include "touch_ui.h"
 
 typedef struct {
   char id[CHAT_ID_LEN];
@@ -12,6 +13,7 @@ static Window *s_window;
 static MenuLayer *s_menu_layer;
 static ChatItem s_chats[MAX_CHATS];
 static int s_chat_count = 0;
+static bool s_touch = false;   // touch available: taller, finger-sized rows
 
 // Persistent storage for chat list
 #define PERSIST_CHAT_LIST_COUNT 250
@@ -153,19 +155,18 @@ static int16_t menu_get_cell_height(MenuLayer *menu_layer, MenuIndex *cell_index
 #ifdef PBL_ROUND
   // Taller cells on round for better readability in the curved area
   if (menu_layer_is_index_selected(menu_layer, cell_index)) {
-    return 68; // Selected (center) cell is taller
+    return s_touch ? 72 : 68; // Selected (center) cell is taller
   }
-  return 48;
+  return s_touch ? 52 : 48;
 #else
-  return 52;
+  // Rows grow a little on touch watches so they make comfortable finger targets
+  return s_touch ? 58 : 52;
 #endif
 }
 
 static void menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cell_index, void *data) {
   GRect bounds = layer_get_bounds(cell_layer);
   bool is_selected = menu_layer_is_index_selected(s_menu_layer, cell_index);
-  APP_LOG(APP_LOG_LEVEL_INFO, "menu_draw_row: row=%d count=%d bounds=%dx%d",
-    cell_index->row, s_chat_count, bounds.size.w, bounds.size.h);
 
   if (s_chat_count == 0) {
     // Loading state
@@ -280,11 +281,12 @@ static void menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cel
 
   int text_x = 30;
   int text_w_rect = bounds.size.w - text_x - 4;
+  int text_top = (bounds.size.h - 44) / 2;   // centre the two text lines in the row
 
   // Chat name (without service prefix)
   graphics_draw_text(ctx, display_name,
     fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
-    GRect(text_x, 2, text_w_rect, 22),
+    GRect(text_x, text_top, text_w_rect, 22),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
   // Preview
@@ -295,7 +297,7 @@ static void menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cel
 #endif
   graphics_draw_text(ctx, s_chats[idx].preview,
     fonts_get_system_font(FONT_KEY_GOTHIC_14),
-    GRect(text_x, 24, text_w_rect, 20),
+    GRect(text_x, text_top + 22, text_w_rect, 20),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 #endif
 }
@@ -322,7 +324,10 @@ static void window_load(Window *window) {
   GRect bounds = layer_get_bounds(window_layer);
 
   load_icons();
+  s_touch = touch_ui_available();
 
+  // MenuLayer scrolls and activates rows by touch on its own once the app
+  // has opted in to touch navigation (see main.c); nothing extra needed here.
   s_menu_layer = menu_layer_create(bounds);
 
 #ifdef PBL_ROUND

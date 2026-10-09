@@ -17,3 +17,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# waf build lock
+.lock-waf*

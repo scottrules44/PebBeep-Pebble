@@ -1,5 +1,6 @@
 #include "message_view.h"
 #include "reply_menu.h"
+#include "touch_ui.h"
 
 typedef struct {
   char sender[MSG_SENDER_LEN];
@@ -33,6 +34,12 @@ static int s_message_count = 0;
 static char s_chat_id[64];
 static char s_chat_name[24];
 static int s_content_height = 0;
+static Layer *s_footer_layer;      // "Reply" button on touch watches
+static bool s_touch = false;
+#if defined(PBL_TOUCH)
+static int16_t s_pan_base = 0;     // scroll offset when a finger drag started
+static bool s_recognizers_attached = false;
+#endif
 
 // Simple hash for chat ID (to fit in persist key)
 static uint32_t hash_chat_id(const char *id) {
@@ -119,7 +126,7 @@ static void load_messages_from_storage(void) {
 static int calc_message_height(GRect bounds, int idx) {
   int text_w = bounds.size.w - 20;
 #ifdef PBL_ROUND
-  text_w = bounds.size.w - 50; // more inset on round
+  text_w = bounds.size.w - 60; // more inset on round (matches draw_messages)
 #endif
 
   GSize sender_size = graphics_text_layout_get_content_size(
@@ -244,9 +251,12 @@ static void draw_messages(Layer *layer, GContext *ctx) {
 #ifdef PBL_COLOR
     graphics_context_set_text_color(ctx, GColorLightGray);
 #endif
+    // Position against the visible scroll frame, not the tall draw layer
+    int16_t visible_h = s_scroll_layer
+      ? layer_get_frame(scroll_layer_get_layer(s_scroll_layer)).size.h : 100;
     graphics_draw_text(ctx, "Loading messages...",
       fonts_get_system_font(FONT_KEY_GOTHIC_18),
-      GRect(0, bounds.size.h / 3, bounds.size.w, 30),
+      GRect(0, visible_h / 3, bounds.size.w, 30),
       GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
   }
 
@@ -266,17 +276,91 @@ static void scroll_click_config_provider(void *context) {
   window_single_click_subscribe(BUTTON_ID_SELECT, select_click_handler);
 }
 
-static ScrollLayerCallbacks s_scroll_callbacks;
+// --- Touch (Pebble Time 2 / Pebble Round 2) ---
+
+#if defined(PBL_TOUCH)
+// Keep a content offset inside [top of content, bottom of content]
+static int16_t prv_clamp_offset(int32_t y) {
+  GRect frame = layer_get_frame(scroll_layer_get_layer(s_scroll_layer));
+  GSize content = scroll_layer_get_content_size(s_scroll_layer);
+  int32_t min_y = frame.size.h - content.h;   // negative when content overflows
+  if (min_y > 0) min_y = 0;
+  if (y < min_y) y = min_y;
+  if (y > 0) y = 0;
+  return (int16_t)y;
+}
+
+// A finger drag scrolls the conversation; a flick carries on a little.
+static void pan_handler(const Recognizer *recognizer, RecognizerEvent event) {
+  if (!s_scroll_layer) return;
+  switch (event) {
+    case RecognizerEvent_Started:
+      s_pan_base = scroll_layer_get_content_offset(s_scroll_layer).y;
+      break;
+    case RecognizerEvent_Updated: {
+      GPoint d = pan_recognizer_get_delta_since_start(recognizer);
+      scroll_layer_set_content_offset(s_scroll_layer,
+        GPoint(0, prv_clamp_offset(s_pan_base + d.y)), false);
+      break;
+    }
+    case RecognizerEvent_Completed: {
+      // Velocity is in px/s; carry roughly a quarter second of it as a fling
+      GPoint v = pan_recognizer_get_velocity(recognizer);
+      int16_t cur = scroll_layer_get_content_offset(s_scroll_layer).y;
+      scroll_layer_set_content_offset(s_scroll_layer,
+        GPoint(0, prv_clamp_offset(cur + v.y / 4)), true);
+      break;
+    }
+    case RecognizerEvent_Cancelled:
+      scroll_layer_set_content_offset(s_scroll_layer, GPoint(0, s_pan_base), true);
+      break;
+  }
+}
+
+static void footer_update_proc(Layer *layer, GContext *ctx) {
+  GRect b = layer_get_bounds(layer);
+  touch_ui_draw_button(ctx, touch_ui_footer_button_rect(b, 1, 0), "Reply", true);
+}
+
+static void tap_handler(const Recognizer *recognizer, RecognizerEvent event) {
+  if (event != RecognizerEvent_Completed || !s_footer_layer) return;
+  GPoint p = tap_recognizer_get_tap_point(recognizer);
+  GRect footer = layer_get_frame(s_footer_layer);
+  if (grect_contains_point(&footer, &p)) {
+    reply_menu_show(s_chat_id, s_chat_name);
+  }
+}
+
+// Mirror the system-wide convention: swipe right = BACK, swipe left = SELECT
+static void swipe_handler(const Recognizer *recognizer, RecognizerEvent event) {
+  if (event != RecognizerEvent_Completed) return;
+  switch (swipe_recognizer_get_direction(recognizer)) {
+    case SwipeDirection_Right: window_stack_pop(true); break;
+    case SwipeDirection_Left:  reply_menu_show(s_chat_id, s_chat_name); break;
+    default: break;
+  }
+}
+#endif
+
+// --- Window ---
 
 static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
+  s_touch = touch_ui_available();
 
 #ifdef PBL_COLOR
   window_set_background_color(window, GColorBlack);
 #endif
 
-  s_scroll_layer = scroll_layer_create(bounds);
+  // Leave room for the touch footer (only when touch is available)
+  GRect footer = touch_ui_footer_rect(bounds);
+  GRect scroll_frame = bounds;
+  if (s_touch) {
+    scroll_frame.size.h = footer.origin.y;
+  }
+
+  s_scroll_layer = scroll_layer_create(scroll_frame);
   scroll_layer_set_click_config_onto_window(s_scroll_layer, window);
 
   // Add SELECT button for reply without breaking scroll
@@ -285,24 +369,50 @@ static void window_load(Window *window) {
   });
 
   // Custom draw layer for messages
-  s_draw_layer = layer_create(GRect(0, 0, bounds.size.w, 2000));
+  s_draw_layer = layer_create(GRect(0, 0, scroll_frame.size.w, 2000));
   layer_set_update_proc(s_draw_layer, draw_messages);
   scroll_layer_add_child(s_scroll_layer, s_draw_layer);
 
   // Initial content size — will be updated after draw
-  scroll_layer_set_content_size(s_scroll_layer, GSize(bounds.size.w, 400));
+  scroll_layer_set_content_size(s_scroll_layer, GSize(scroll_frame.size.w, 400));
 
 #ifdef PBL_ROUND
-  scroll_layer_set_paging(s_scroll_layer, true);
+  // Page with the buttons on round screens; a finger can position freely
+  if (!s_touch) scroll_layer_set_paging(s_scroll_layer, true);
 #endif
 
   layer_add_child(window_layer, scroll_layer_get_layer(s_scroll_layer));
+
+  if (s_touch) {
+#if defined(PBL_TOUCH)
+    s_footer_layer = layer_create(footer);
+    layer_set_update_proc(s_footer_layer, footer_update_proc);
+    layer_add_child(window_layer, s_footer_layer);
+
+    // Own the touches: drag to scroll, tap Reply, swipe for back/reply.
+    // Recognizers live on the window's root layer for the life of the window
+    // (the firmware does not free them on unload) and this window is reused
+    // for every chat, so attach them exactly once.
+    window_set_touch_bridge_disabled(window, true);
+    if (!s_recognizers_attached) {
+      window_attach_recognizer(window, pan_recognizer_create(pan_handler, NULL, PanAxis_Vertical));
+      window_attach_recognizer(window, tap_recognizer_create(tap_handler, NULL));
+      window_attach_recognizer(window, swipe_recognizer_create(swipe_handler, NULL,
+                               SwipeDirection_Left | SwipeDirection_Right));
+      s_recognizers_attached = true;
+    }
+#endif
+  }
 }
 
 static void window_unload(Window *window) {
   // Save messages before closing
   if (s_message_count > 0) {
     save_messages_to_storage();
+  }
+  if (s_footer_layer) {
+    layer_destroy(s_footer_layer);
+    s_footer_layer = NULL;
   }
   if (s_draw_layer) {
     layer_destroy(s_draw_layer);
@@ -432,8 +542,10 @@ void message_view_add_message(int index, const char *sender, const char *text, c
   if (s_draw_layer && s_scroll_layer && s_window) {
     layer_mark_dirty(s_draw_layer);
 
-    // Update content size after a short delay to let draw calculate height
-    GRect bounds = layer_get_bounds(window_get_root_layer(s_window));
+    // Size the content to the messages and scroll to the newest one.
+    // Use the scroll layer's frame: it is shorter than the window when the
+    // touch footer is showing.
+    GRect bounds = layer_get_frame(scroll_layer_get_layer(s_scroll_layer));
     int estimated_h = 0;
     for (int i = 0; i < s_message_count; i++) {
       estimated_h += calc_message_height(bounds, i);
